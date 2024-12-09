@@ -63,12 +63,10 @@ async def webhook(request: Request):
 
 @app.get("/spiderhook/{account_id}")
 async def get_latest_order(account_id: str):
-    """Fetch the latest record for an account ID within the last 1 minute."""
-    one_min_ago = datetime.utcnow() - timedelta(minutes=1)
 
     # Query the latest record
     record = collection.find_one(
-        {"accountid": account_id, "timestamp": {"$gte": one_min_ago}},
+        {"accountid": account_id},
         sort=[("timestamp", -1)]  # Sort by timestamp in descending order
     )
 
