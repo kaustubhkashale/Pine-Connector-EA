@@ -1,6 +1,6 @@
 import random
 import string
-from datetime import datetime
+from datetime import datetime, timedelta
 from fastapi import FastAPI, Request, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
@@ -95,14 +95,22 @@ async def webhook(request: Request):
 async def get_latest_order(account_id: str):
     """Fetch the most recent record for a given account ID."""
     # Query the latest record
+
     record = await collection.find_one(
         {"accountid": account_id},
         sort=[("timestamp", -1)]  # Sort by timestamp in descending order
     )
+    current_time = datetime.utcnow()
+    record_time = record["timestamp"]
 
     if not record:
         return {"status": 404, "message": "No recent orders found"}
 
+    if not isinstance(record_time, datetime):
+        raise HTTPException(status_code=500, detail="Invalid timestamp in database")
+
+    if (current_time - record_time) > timedelta(seconds=10):
+        return {"status": 404, "message": "No orders within the last 10 seconds"}
     # Convert MongoDB ObjectId to string
     record["_id"] = str(record["_id"])
     return {"status": 200, "data": record}
