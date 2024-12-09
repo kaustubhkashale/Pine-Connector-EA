@@ -1,7 +1,7 @@
 import random
 import string
 from datetime import datetime
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
 
@@ -24,40 +24,69 @@ def generate_order_id(action: str) -> str:
     unique_id = ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     return f"{prefix}-{unique_id}"
 
-# Request model for validation (optional but recommended)
-class WebhookData(BaseModel):
-    account_id: str
-    symbol: str
-    action: str
-    lot: float
-    sl: float
-    tp: float
+class WebhookMessage(BaseModel):
+    message: str
 
 @app.post("/webhook")
-async def webhook(data: WebhookData):
-    """Handle incoming webhook and save data to MongoDB."""
-    print("Received data:", data.dict())
+async def webhook(data: WebhookMessage):
+    """
+    Handle incoming webhook, parse the TradingView message, and save data to MongoDB.
+    """
+    message = data.message  # Extract the message from the request body
+    try:
+        # Split the message into components
+        components = message.split(",")
+        if len(components) != 6:
+            raise ValueError("Invalid message format")
 
-    # Generate order ID and timestamp
-    order_id = generate_order_id(data.action)
-    timestamp = datetime.utcnow()
+        # Extract values from the message
+        account_id = components[0].strip()
+        symbol = components[1].strip()
+        action = components[2].strip().lower()
 
-    # Create the record
-    record = {
-        "accountid": data.account_id,
-        "symbol": data.symbol,
-        "action": data.action,
-        "lot": data.lot,
-        "sl": data.sl,
-        "tp": data.tp,
-        "order_id": order_id,
-        "timestamp": timestamp,
-    }
+        # Extract lot, SL, and TP as key=value pairs
+        lot = None
+        sl = None
+        tp = None
 
-    # Insert into MongoDB
-    await collection.insert_one(record)
+        for component in components[3:]:
+            key, value = component.split("=")
+            if key == "lot":
+                lot = float(value)
+            elif key == "sl":
+                sl = float(value)
+            elif key == "tp":
+                tp = float(value)
 
-    return {"status": 200, "message": "Order received", "order_id": order_id}
+        # Validate extracted data
+        if not account_id or not symbol or not action or lot is None or sl is None or tp is None:
+            raise ValueError("Missing or invalid data in message")
+
+        # Generate order ID and timestamp
+        order_id = generate_order_id(action)
+        timestamp = datetime.utcnow()
+
+        # Create the record
+        record = {
+            "accountid": account_id,
+            "symbol": symbol,
+            "action": action,
+            "lot": lot,
+            "sl": sl,
+            "tp": tp,
+            "order_id": order_id,
+            "timestamp": timestamp,
+        }
+
+        # Insert into MongoDB
+        await collection.insert_one(record)
+
+        return {"status": 200, "message": "Order received", "order_id": order_id}
+
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="An error occurred while processing the webhook")
 
 @app.get("/spiderhook/{account_id}")
 async def get_latest_order(account_id: str):
@@ -82,4 +111,4 @@ async def root():
 # Run the app with Uvicorn
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8001)
