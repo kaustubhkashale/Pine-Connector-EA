@@ -79,6 +79,11 @@ async def get_latest_order(account_id: str):
     record["_id"] = str(record["_id"])
     return {"status": 200, "data": record}
 
+@app.get("/")
+async def root():
+    return {"message": "Hello World"}
+    
+
 # AWS Lambda handler using Mangum
 # handler = Mangum(app)
 if __name__ == "__main__":
