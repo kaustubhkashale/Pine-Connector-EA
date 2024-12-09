@@ -28,12 +28,15 @@ class WebhookMessage(BaseModel):
     message: str
 
 @app.post("/webhook")
-async def webhook(data: WebhookMessage):
+async def webhook(request: Request):
     """
-    Handle incoming webhook, parse the TradingView message, and save data to MongoDB.
+    Handle incoming webhook, parse the TradingView message from raw content, and save data to MongoDB.
     """
-    message = data.message  # Extract the message from the request body
     try:
+        # Read raw body content
+        body = await request.body()
+        message = body.decode('utf-8').strip()  # Decode and clean the message
+
         # Split the message into components
         components = message.split(",")
         if len(components) != 6:
